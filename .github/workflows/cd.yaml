@@ -1,0 +1,100 @@
+name: Kubernetes CD
+
+on:
+  repository_dispatch:
+    types:
+      - deploy
+
+jobs:
+  deploy:
+    name: Build Docker Image and Deploy
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+
+      # ==========================================
+      # Checkout Kubernetes repository
+      # ==========================================
+      - name: Checkout Kubernetes repository
+        uses: actions/checkout@v4
+
+      # ==========================================
+      # Checkout Spring Boot repository
+      # ==========================================
+      - name: Checkout Spring Boot repository
+        uses: actions/checkout@v4
+        with:
+          repository: Deepak1125/spring-boot-crud-postgres-adminer
+          ref: ${{ github.event.client_payload.tag }}
+          path: spring-app
+
+      # ==========================================
+      # Login to Docker Hub
+      # ==========================================
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ==========================================
+      # Build Docker image
+      # ==========================================
+      - name: Build Docker image
+        working-directory: spring-app
+        run: |
+          docker build \
+            -t deepakchandra1125/java-demo-app:${{ github.event.client_payload.tag }} \
+            .
+
+      # ==========================================
+      # Push Docker image
+      # ==========================================
+      - name: Push Docker image
+        run: |
+          docker push \
+            deepakchandra1125/java-demo-app:${{ github.event.client_payload.tag }}
+
+      # ==========================================
+      # Check Kubernetes
+      # ==========================================
+      - name: Check Kubernetes
+        run: |
+          kubectl version --client
+          kubectl get nodes
+
+      # ==========================================
+      # Update Java application image
+      # ==========================================
+      - name: Update Java deployment image
+        run: |
+          kubectl -n java-demo set image deployment/java-demo-app \
+            java-demo=deepakchandra1125/java-demo-app:${{ github.event.client_payload.tag }}
+
+      # ==========================================
+      # Apply Kubernetes manifests
+      # ==========================================
+      - name: Deploy Kubernetes manifests
+        run: |
+          kubectl apply -k k8s/
+
+      # ==========================================
+      # Wait for deployment
+      # ==========================================
+      - name: Wait for rollout
+        run: |
+          kubectl -n java-demo rollout status \
+            deployment/java-demo-app \
+            --timeout=180s
+
+      # ==========================================
+      # Verify deployment
+      # ==========================================
+      - name: Verify deployment
+        run: |
+          kubectl -n java-demo get deployments
+          kubectl -n java-demo get pods
+          kubectl -n java-demo get services
