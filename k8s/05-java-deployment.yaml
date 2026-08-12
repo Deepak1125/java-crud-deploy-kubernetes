@@ -17,8 +17,8 @@ spec:
     spec:
       containers:
       - name: java-demo
-        image: java-demo-app
-        imagePullPolicy: IfNotPresent
+        image: deepakchandra1125/java-demo-app:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
         env:
