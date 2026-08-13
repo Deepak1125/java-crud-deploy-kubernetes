@@ -14,15 +14,14 @@ jobs:
       contents: read
 
     steps:
-
       # ==========================================
-      # Checkout Kubernetes repository
+      # Checkout Kubernetes Repository
       # ==========================================
       - name: Checkout Kubernetes repository
         uses: actions/checkout@v4
 
       # ==========================================
-      # Checkout Spring Boot repository
+      # Checkout Spring Boot Repository
       # ==========================================
       - name: Checkout Spring Boot repository
         uses: actions/checkout@v4
@@ -41,7 +40,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # ==========================================
-      # Build Docker image
+      # Build Docker Image
       # ==========================================
       - name: Build Docker image
         working-directory: spring-app
@@ -51,50 +50,95 @@ jobs:
             .
 
       # ==========================================
-      # Push Docker image
+      # Push Docker Image
       # ==========================================
       - name: Push Docker image
         run: |
-          docker push \
-            deepakchandra1125/java-demo-app:${{ github.event.client_payload.tag }}
+          docker push deepakchandra1125/java-demo-app:${{ github.event.client_payload.tag }}
 
       # ==========================================
-      # Check Kubernetes
+      # Create Kind Cluster
       # ==========================================
-      - name: Check Kubernetes
+      - name: Create Kind Cluster
+        uses: helm/kind-action@v1
+
+      # ==========================================
+      # Verify Cluster
+      # ==========================================
+      - name: Verify Kubernetes Cluster
         run: |
           kubectl version --client
+          kubectl cluster-info
           kubectl get nodes
 
       # ==========================================
-      # Update Java application image
+      # Update Java Image Tag
       # ==========================================
-      - name: Update Java deployment image
+      - name: Update image tag
         run: |
-          kubectl -n java-demo set image deployment/java-demo-app \
-            java-demo=deepakchandra1125/java-demo-app:${{ github.event.client_payload.tag }}
+          sed -i "s|deepakchandra1125/java-demo-app:latest|deepakchandra1125/java-demo-app:${{ github.event.client_payload.tag }}|g" k8s/05-java-deployment.yaml
 
       # ==========================================
-      # Apply Kubernetes manifests
+      # Deploy Kubernetes Manifests
       # ==========================================
       - name: Deploy Kubernetes manifests
         run: |
           kubectl apply -k k8s/
 
       # ==========================================
-      # Wait for deployment
+      # Wait for PostgreSQL
       # ==========================================
-      - name: Wait for rollout
+      - name: Wait for PostgreSQL
         run: |
-          kubectl -n java-demo rollout status \
-            deployment/java-demo-app \
+          kubectl rollout status deployment/crud-postgres \
+            -n java-demo \
             --timeout=180s
 
       # ==========================================
-      # Verify deployment
+      # Wait for Java Application
       # ==========================================
-      - name: Verify deployment
+      - name: Wait for Java Application
         run: |
-          kubectl -n java-demo get deployments
-          kubectl -n java-demo get pods
-          kubectl -n java-demo get services
+          kubectl rollout status deployment/java-demo-app \
+            -n java-demo \
+            --timeout=180s
+
+      # ==========================================
+      # Wait for Adminer
+      # ==========================================
+      - name: Wait for Adminer
+        run: |
+          kubectl rollout status deployment/adminer \
+            -n java-demo \
+            --timeout=180s
+
+      # ==========================================
+      # Verify Resources
+      # ==========================================
+      - name: Verify Resources
+        run: |
+          kubectl get all -n java-demo
+
+      # ==========================================
+      # Java Application Logs
+      # ==========================================
+      - name: Java Application Logs
+        if: always()
+        run: |
+          kubectl logs deployment/java-demo-app -n java-demo || true
+
+      # ==========================================
+      # PostgreSQL Logs
+      # ==========================================
+      - name: PostgreSQL Logs
+        if: always()
+        run: |
+          kubectl logs deployment/crud-postgres -n java-demo || true
+
+      # ==========================================
+      # Adminer Logs
+      # ==========================================
+      - name: Adminer Logs
+        if: always()
+        run: |
+          kubectl logs deployment/adminer -n java-demo || true
